@@ -1,9 +1,9 @@
 val cam = ["dupl", "fst", "swap", "snd", "plus", "stop" ];
-val cam2 = ["quote", "4", "swap", "cons", "cur", "6", "app", "stop", "dupl", "fst", "swap", "snd", "plus", "return"];
+val cam2 = ["load", "()", "quote", "1", "cons", "quote", "4", "cons", "cur", "8", "app", "stop", "dupl", "fst", "swap", "snd", "fst",  "plus", "return"];
 
 datatype 'a lst = empty | elem of 'a * 'a lst;
 datatype dty = I of int | R of real | B of bool | P of dty * dty | A of int | Null;
-datatype instruction = qt of dty | cn | cr of dty | ap | st | dp | fs | sw | sn | pl | rt;
+datatype instruction = qt of dty | ld of dty | cn | cr of dty | ap | st | dp | fs | sw | sn | pl | rt;
 
 val x = 3;
 val y = 4;
@@ -22,23 +22,23 @@ fun toReal (R x) = x;
 fun toBool (B x) = x;
 fun toPair (P x) = x;
 fun toAddress (A x) = x;
+fun nth (x,0) = hd(x)
+	| nth (x,y) = nth(tl(x),y-1);
 
 (* Prints out stack or memory *)
-fun printList (x) =( ( fn (y) => 
-	case (y) of
-		(I i) => print("( " ^ Int.toString(i) ^ " ")
-		| (R r) => print("( " ^ Real.toString(r) ^ " ")
-		| (B b) => print("( " ^ Bool.toString(b) ^ " ")
-		| (A a) => print("( #" ^ Int.toString(a) ^ " ")
-		| (_) => print("( unknown ")
-	)(#1 x);
+fun printList (empty) = print("(end)")
+	| printList(x) = (  
+	
+		( fn (y) => case (y) of
+			(I i) => print("( " ^ Int.toString(i) ^ " ")
+			| (R r) => print("( " ^ Real.toString(r) ^ " ")
+			| (B b) => print("( " ^ Bool.toString(b) ^ " ")
+			| (A a) => print("( #" ^ Int.toString(a) ^ " ")
+			| (_) => print("( unknown ")
+		)(#1 (strip(x)));
 
-	( fn (z) =>
-	case z of
-	  empty => print("(end")
-	 |_ => printList(strip(z))
-	)(#2 x); 	
-	print(") ") 
+		printList(#2 (strip(x)));
+		print(") ") 
 	);
 
 (*Pops off the stack*)
@@ -53,6 +53,8 @@ fun pop () =
 	  	end
 	else Null;
 
+(*Takes in a string and returns true or false if its a boolean
+or the nummerical value if it is an int or real *)
 fun parse (x) = (
 let
 	val n = explode x;
@@ -99,6 +101,7 @@ let
 		case (x) of 
 			("true") => (B true)
 			| ("false") => (B false)
+			| ("()") => Null
 			| (_) => intORreal(condence(l,0))
 
 		); 
@@ -112,6 +115,13 @@ fun getAddress (x,0) = (#1 (strip(x)))
 	| getAddress(x,~1) = Null
 	| getAddress(x,y) = getAddress(#2 (strip(x)), y-1);
 
+(*Pushes value into next free space*)
+fun memPush (x) = (
+	MR := !MR+1;
+	MEMORY := elem( x, !MEMORY)
+	);
+
+(********************************************************************)
 (*Duplicates element on the stack*)
 fun  dupl () = ( STACK := elem(#1 (this(STACK)), !STACK), SR:= !SR+1 );
 
@@ -121,15 +131,20 @@ fun quote (x) = (
 	STACK := elem( x, !STACK)
 	);
 
+fun load (x) = ( case !STACK of
+	empty => ( STACK := elem(x, empty) )
+	| _ => ( STACK := elem( x, #2 (this(STACK))))
+	);
+
 (*Gets the first object pointed to by the address on the stack*)
 fun fst () = (fn x =>  case x of
-	A x => quote( getAddress( !MEMORY, !MR - toAddress( pop() ) ) )
+	A x => quote( getAddress( !MEMORY, !MR - toAddress( pop() ) - 1 ) )
 	| _ => ()
 	)(#1 (this(STACK)));
 
 (*Gets thw secnod thig pointed to by the object on the stack*)
 fun snd () = (fn x =>  case x of
-	A x => quote( getAddress( !MEMORY, !MR - toAddress( pop() ) - 1 ) ) 
+	A x => quote( getAddress( !MEMORY, !MR - toAddress( pop() ) - 2 ) ) 
 	| _ => ()
 	)(#1 (this(STACK)));
 
@@ -150,6 +165,31 @@ fun plus() = ( fn (x,y) =>
 	| (_,_) => ( quote(y); quote(x) )
 	)(pop(),pop());
  
+fun app(x) = (
+	let
+		val y = pop()
+	in
+		quote(x);
+		swap();
+		y
+	end );
+
+(*Pops top twp values on the stack, then puts them into memory
+Puts their address into the stack*)
+fun cons() = ( memPush(pop()); memPush(pop()); quote(A (!MR-2)) ); 
+
+fun return() = (
+	let
+		val x = pop();
+		val (I y) = pop();
+	in
+		quote(x);
+		y
+	end 	
+	);
+
+fun cur(x) = quote(x);
+
 val stop = ();
 
 (*Builds a list of instructions to execute from a list of strings
@@ -167,21 +207,32 @@ fun setInstructions [] = []
 		| "return" => rt::setInstructions(tl(x))
 		| "app" => ap::setInstructions(tl(x))
 		| "cons" => cn::setInstructions(tl(x)) 
+		| "load" => (ld (parse(hd(tl(x)))))::setInstructions(tl(tl(x)))
 	);
 	
 
 fun run (IS, CR) = case (nth(IS,CR)) of
-  dp => ( print("S: "); printList(this(STACK)); print("\t\tM: "); printList(this(MEMORY));  print(" -- dupl\n"); dupl(); run(IS,CR+1) )
-  | fs => ( print("S: "); printList(this(STACK)); print("\t\tM: "); printList(this(MEMORY)); print(" -- fst\n"); fst(); run(IS, CR+1))
-  | sw => ( print("S: "); printList(this(STACK)); print("\t\tM: "); printList(this(MEMORY)); print(" -- swap\n"); swap(); run(IS, CR+1))
-  | sn => ( print("S: "); printList(this(STACK)); print("\t\tM: "); printList(this(MEMORY)); print(" -- snd\n"); snd(); run(IS, CR+1))
-  | pl => ( print("S: "); printList(this(STACK)); print("\t\tM: "); printList(this(MEMORY)); print(" -- plus\n"); plus(); run(IS, CR+1))
-  | (qt x) => ( print("S: "); printList(this(STACK)); print("\t\tM: "); printList(this(MEMORY)); print(" -- quote\n"); quote(x); run(IS, CR+1))
-  | st => ( print("S: "); printList(this(STACK)); print("\t\tM: "); printList(this(MEMORY)); print(" -- stop\n") ); 
+	dp => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY);  print(" -- dupl\n"); dupl(); run(IS,CR+1) )
+	| fs => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- fst\n"); fst(); run(IS, CR+1) )
+	| sw => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- swap\n"); swap(); run(IS, CR+1) )
+	| sn => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- snd\n"); snd(); run(IS, CR+1) )
+	| pl => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- plus\n"); plus(); run(IS, CR+1) )
+	| (qt x) => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- quote\n"); quote(x); run(IS, CR+1) ) 
+	| (ld x) => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- load\n"); load(x); run(IS, CR+1) )
+	| ap => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- app\n"); run(IS, toInt(app(I (CR+1)))) )
+	| cn => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- cons\n"); cons(); run(IS, CR+1) )
+	| rt => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- return\n"); run(IS, return()) )
+	| (cr x) => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- cur\n"); cur(x); run(IS, CR+1) )	
+	| st => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- stop\n") ); 
 
 setInstructions cam;
-run(it,it);
-setInstructions cam2;
-
-
+run(it,0);
+val i = setInstructions cam2;
+STACK := empty;
+MEMORY := empty;
+SR := 0;
+MR := 0;
+printList(!STACK);
+printList(!MEMORY);
+(*printList(!STACK);*)
 
