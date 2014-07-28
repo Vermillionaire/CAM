@@ -1,0 +1,9 @@
+load 6
+quote 8
+cons
+dupl
+fst
+swap
+snd
+plus
+stop

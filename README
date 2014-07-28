@@ -1,0 +1,4 @@
+Program takes in a text file called code.txt.
+When the code is successfully read into the machine, type command execute() to run it.
+There are two different example programs provided called code.txt and code1.txt.
+To run code1.txt, change its name to code.txt.

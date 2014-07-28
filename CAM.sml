@@ -268,9 +268,8 @@ fun run (IS, CR) = case (nth(IS,CR)) of
 
 STACK := empty;
 MEMORY := empty;
-val i = setInstructions cam3;
 
-run(i,0);
+fun execute = run(setInstructions(cam),0); 
 printList(!STACK);
 printList(!MEMORY);
 (*printList(!STACK);*)
