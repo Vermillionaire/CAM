@@ -1,17 +1,44 @@
-val cam = ["dupl", "fst", "swap", "snd", "plus", "stop" ];
-val cam2 = ["load", "()", "quote", "1", "cons", "quote", "4", "cons", "cur", "8", "app", "stop", "dupl", "fst", "swap", "snd", "fst",  "plus", "return"];
 
+(*Reads in text from file called code.txt**********************************)
+print("Input file is code.txt\n");
+val inStream = TextIO.openIn("code.txt");
+fun inText(x) = (
+	let 
+		val y = TextIO.input1(inStream)
+		fun convert(SOME z) = z	
+	in
+		if (y <> NONE) then
+			convert(y)::inText(x)
+			
+		else []
+	end );
+
+fun toString(x) = ( case hd(x) of
+	#" " => "" 
+	| #"\n" => ""
+	| _ => Char.toString(hd(x))^toString(tl(x)) );
+
+fun nthtail(x,0) = tl(x)
+	| nthtail(x,y) = nthtail(tl(x),y-1);
+
+fun code [] = []
+	| code(x) = toString(x)::code(nthtail(x,String.size(toString(x)))); 
+
+val cam = code(inText(inStream)); 
+(**************************************************************************)
+
+(*Defines data types*)
 datatype 'a lst = empty | elem of 'a * 'a lst;
-datatype dty = I of int | R of real | B of bool | P of dty * dty | A of int | Null;
-datatype instruction = qt of dty | ld of dty | cn | cr of dty | ap | st | dp | fs | sw | sn | pl | rt;
+datatype dty = I of int | R of real | B of bool | A of int | Null;
+datatype instruction = qt of dty | ld of dty | cn | cr of dty | ap | st | dp | fs | sw | sn | pl | rt | ml |  unknown;
+(*******************)
 
-val x = 3;
-val y = 4;
-
-val STACK = ref (elem (A 0, empty));
-val MEMORY = ref (elem (I x, elem (I y, empty)));
+(*************Initalizes stack and Memory**************)
+val STACK = ref (elem (Null, empty));
+val MEMORY = ref (elem (Null, empty));
 val SR = ref 0;
-val MR = ref 1;
+val MR = ref 0;
+(******************************************************)
 
 (*Helper functions*)
 fun strip (elem x) = x;
@@ -20,8 +47,9 @@ fun next (x) = #2 (this(x));
 fun toInt (I x) = x;
 fun toReal (R x) = x;
 fun toBool (B x) = x;
-fun toPair (P x) = x;
 fun toAddress (A x) = x;
+fun clearStack() = ( STACK := empty; SR := 0 );
+fun clearMem() = ( MEMORY := empty; MR := 0 );
 fun nth (x,0) = hd(x)
 	| nth (x,y) = nth(tl(x),y-1);
 
@@ -34,7 +62,7 @@ fun printList (empty) = print("(end)")
 			| (R r) => print("( " ^ Real.toString(r) ^ " ")
 			| (B b) => print("( " ^ Bool.toString(b) ^ " ")
 			| (A a) => print("( #" ^ Int.toString(a) ^ " ")
-			| (_) => print("( unknown ")
+			| Null => print("( null ")
 		)(#1 (strip(x)));
 
 		printList(#2 (strip(x)));
@@ -158,13 +186,23 @@ fun swap () = (
 	  quote(y)
 	end );
 
+(*Multiply top two values on stack*)
+fun mult() = ( fn (x,y) => 
+	case (x,y) of
+	  (I x, I y) => quote( I (x * y) )
+	| (R x, R y) => quote( R (x * y) )
+	| (_,_) => ( quote(y); quote(x) )
+	)(pop(),pop());
+
+(*Add top two values on stack*)
 fun plus() = ( fn (x,y) => 
 	case (x,y) of
 	  (I x, I y) => quote( I (x + y) )
 	| (R x, R y) => quote( R (x + y) )
 	| (_,_) => ( quote(y); quote(x) )
 	)(pop(),pop());
- 
+
+(*Jumps to a instruction and puts the return address on the stack*)
 fun app(x) = (
 	let
 		val y = pop()
@@ -208,30 +246,31 @@ fun setInstructions [] = []
 		| "app" => ap::setInstructions(tl(x))
 		| "cons" => cn::setInstructions(tl(x)) 
 		| "load" => (ld (parse(hd(tl(x)))))::setInstructions(tl(tl(x)))
+		| "mult" => ml::setInstructions(tl(x))
+		| _ => ( print("Unknown Instruction\n"); unknown::setInstructions(tl(x)) )
 	);
 	
 
 fun run (IS, CR) = case (nth(IS,CR)) of
-	dp => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY);  print(" -- dupl\n"); dupl(); run(IS,CR+1) )
-	| fs => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- fst\n"); fst(); run(IS, CR+1) )
-	| sw => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- swap\n"); swap(); run(IS, CR+1) )
-	| sn => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- snd\n"); snd(); run(IS, CR+1) )
-	| pl => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- plus\n"); plus(); run(IS, CR+1) )
-	| (qt x) => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- quote\n"); quote(x); run(IS, CR+1) ) 
-	| (ld x) => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- load\n"); load(x); run(IS, CR+1) )
-	| ap => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- app\n"); run(IS, toInt(app(I (CR+1)))) )
-	| cn => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- cons\n"); cons(); run(IS, CR+1) )
-	| rt => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- return\n"); run(IS, return()) )
-	| (cr x) => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- cur\n"); cur(x); run(IS, CR+1) )	
-	| st => ( print("S: "); printList(!STACK); print("\t\t\t\tM: "); printList(!MEMORY); print(" -- stop\n") ); 
+	dp => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY);  print(" -- dupl\n\n"); dupl(); run(IS,CR+1) )
+	| fs => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- fst\n\n"); fst(); run(IS, CR+1) )
+	| sw => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- swap\n\n"); swap(); run(IS, CR+1) )
+	| sn => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- snd\n\n"); snd(); run(IS, CR+1) )
+	| pl => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- plus\n\n"); plus(); run(IS, CR+1) )
+	| (qt x) => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- quote\n\n"); quote(x); run(IS, CR+1) ) 
+	| (ld x) => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- load\n\n"); load(x); run(IS, CR+1) )
+	| ap => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- app\n\n"); run(IS, toInt(app(I (CR+1)))) )
+	| cn => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- cons\n\n"); cons(); run(IS, CR+1) )
+	| rt => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- return\n\n"); run(IS, return()) )
+	| (cr x) => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- cur\n\n"); cur(x); run(IS, CR+1) )	
+	| ml => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- mult\n\n"); mult(); run(IS, CR+1) )
+	| st => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- stop\n\n") ); 
 
-setInstructions cam;
-run(it,0);
-val i = setInstructions cam2;
 STACK := empty;
 MEMORY := empty;
-SR := 0;
-MR := 0;
+val i = setInstructions cam3;
+
+run(i,0);
 printList(!STACK);
 printList(!MEMORY);
 (*printList(!STACK);*)
