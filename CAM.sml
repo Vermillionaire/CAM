@@ -1,3 +1,8 @@
+(* Implimentation of a Catigorical Abstract Machine (CAM) in ML
+   by Brian Vermillion
+   07/28/2014
+*)
+
 
 (*Reads in text from file called code.txt**********************************)
 print("Input file is code.txt\n");
@@ -30,7 +35,8 @@ val cam = code(inText(inStream));
 (*Defines data types*)
 datatype 'a lst = empty | elem of 'a * 'a lst;
 datatype dty = I of int | R of real | B of bool | A of int | Null;
-datatype instruction = qt of dty | ld of dty | cn | cr of dty | ap | st | dp | fs | sw | sn | pl | rt | ml |  unknown;
+datatype 'a nest = data of dty | doubleData of dty * dty |  nst of 'a list;
+datatype instruction = qt of instruction nest | ld of instruction nest | cn | cr of instruction nest | ap | st | dp | fs | sw | sn | pl | rt | ml | br of instruction nest |  unknown;
 (*******************)
 
 (*************Initalizes stack and Memory**************)
@@ -81,6 +87,12 @@ fun pop () =
 	  	end
 	else Null;
 
+(*Reads the top of stack*)
+fun read () =
+	if (!SR <> ~1) then 
+	    	(#1 (this(STACK)))
+	else Null;
+
 (*Takes in a string and returns true or false if its a boolean
 or the nummerical value if it is an int or real *)
 fun parse (x) = (
@@ -113,7 +125,7 @@ let
 		| power(x,0) = 1
 		| power (x,y) = x*power(x,y-1);
 
-	fun condence ([],y) = (0,0)
+	fun condence ([],y) = (0,-1)
 		| condence (x,y) =
 		( case hd(x) of
 			10 => ( 0, #1 (condence(tl(x), 0)))
@@ -121,7 +133,8 @@ let
 			| _ => ( hd(x) * power(10,y) + (#1 (condence(tl(x),y+1))), (#2 (condence(tl(x),y+1))))
 		);
 
-	fun intORreal (x,0) = (I x)
+	fun intORreal (0,-1) = Null
+		| intORreal(x,0) = (I x)
 		| intORreal(x,y) = (R (Real.fromInt(y) + 
 			(Real.fromInt(x)/Real.fromInt(power(10,getLeadZ(rev(getDec(l))) + size(Int.toString(x)))))));
 
@@ -228,26 +241,35 @@ fun return() = (
 
 fun cur(x) = quote(x);
 
+(* Branch to different addresses if the value on the stack is a boolean *)
+fun branch(x,y) = ( case (read()) of
+	(B b) => ( pop(); if b then quote(x) else quote(y) )
+	| _ => () );
+
+		
 val stop = ();
+
+fun buildNest(x) = case(
 
 (*Builds a list of instructions to execute from a list of strings
 that was read in from the input file *)
-fun setInstructions [] = []
-	| setInstructions(x) =( case hd(x) of
- 		"dupl" => dp::setInstructions(tl(x))
-  		| "fst" => fs::setInstructions(tl(x))
-		| "swap" => sw::setInstructions(tl(x))
-  		| "snd" => sn::setInstructions(tl(x))
-  		| "plus" => pl::setInstructions(tl(x))
-  		| "quote" => (qt (parse(hd(tl(x)))))::setInstructions(tl(tl(x)))
-  		| "stop" => st::setInstructions(tl(x))
-		| "cur" => (cr (parse(hd(tl(x)))))::setInstructions(tl(tl(x)))
-		| "return" => rt::setInstructions(tl(x))
-		| "app" => ap::setInstructions(tl(x))
-		| "cons" => cn::setInstructions(tl(x)) 
-		| "load" => (ld (parse(hd(tl(x)))))::setInstructions(tl(tl(x)))
-		| "mult" => ml::setInstructions(tl(x))
-		| _ => ( print("Unknown Instruction\n"); unknown::setInstructions(tl(x)) )
+fun setInstructions ([],y)  = []
+	| setInstructions(x,y) =( case hd(x) of
+ 		"dupl" => dp::setInstructions(tl(x),y)
+  		| "fst" => fs::setInstructions(tl(x),y)
+		| "swap" => sw::setInstructions(tl(x),y)
+  		| "snd" => sn::setInstructions(tl(x),y)
+  		| "plus" => pl::setInstructions(tl(x),y)
+  		| "quote" => (qt (parse(hd(tl(x)))))::setInstructions(tl(tl(x)),y)
+  		| "stop" => st::setInstructions(tl(x),y)
+		| "cur" => (cr (parse(hd(tl(x)))))::setInstructions(tl(tl(x)),y)
+		| "return" => if y then rt::[] else rt::setInstructions(tl(x),y)
+		| "app" => ap::setInstructions(tl(x),y)
+		| "cons" => cn::setInstructions(tl(x),y) 
+		| "load" => (ld (parse(hd(tl(x)))))::setInstructions(tl(tl(x)),y)
+		| "mult" => ml::setInstructions(tl(x),y)
+		| "branch" => (br (parse(hd(tl(x))),parse(hd(tl(tl(x))))))::setInstructions(tl(tl(tl(x))),y)
+		| _ => ( print("Unknown Instruction\n"); unknown::setInstructions(tl(x),y) )
 	);
 	
 
@@ -264,13 +286,17 @@ fun run (IS, CR) = case (nth(IS,CR)) of
 	| rt => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- return\n\n"); run(IS, return()) )
 	| (cr x) => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- cur\n\n"); cur(x); run(IS, CR+1) )	
 	| ml => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- mult\n\n"); mult(); run(IS, CR+1) )
+	| br(x,y) => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- branch\n\n"); branch(x,y); run(IS, CR+1 ) )
 	| st => ( print("S: "); printList(!STACK); print("\nM: "); printList(!MEMORY); print(" -- stop\n\n") ); 
 
 STACK := empty;
 MEMORY := empty;
 
-fun execute = run(setInstructions(cam),0); 
-printList(!STACK);
-printList(!MEMORY);
-(*printList(!STACK);*)
+fun execute() = ( run(setInstructions(cam, false),0); read() ); 
+fun printStack() = printList(!STACK);
+fun printMemory() = printList(!MEMORY);
+
+print("********************************************\nRun command execute to automaticaly run the \nCAM program loaded from the file.\nexecute() returns the top value on the stack\n*********************************************\nUseful commands:\n-printStack()\n-printMemory()\n-clearStack()\n-clearMemory()\n");
+
+
 
