@@ -3,6 +3,7 @@ Implimentation of a Categorical Abstract Machine (CAM) in SML
 Basic information on CAM's:
 http://en.wikipedia.org/wiki/Categorical_abstract_machine
 
+(*It currently does not compile*)
 To run the machine you will need to install SML, then run "sml CAM.sml"
 
 The program takes in a text file called code.txt which contains the compiled code for the machine.
